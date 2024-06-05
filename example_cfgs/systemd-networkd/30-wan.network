@@ -1,0 +1,12 @@
+[Match]
+Name=wan0
+Type=ether
+
+[Network]
+# Only WAN port will configure DNS for this system
+DHCP=yes
+
+# Ensure this interface is configured as admin up on boot,
+# even when child interfaces do not have carrier/are not admin up.
+# https://www.freedesktop.org/software/systemd/man/latest/systemd.network.html#ConfigureWithoutCarrier=
+ConfigureWithoutCarrier=true

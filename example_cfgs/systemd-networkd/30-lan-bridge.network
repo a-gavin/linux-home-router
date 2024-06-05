@@ -1,0 +1,23 @@
+[Match]
+Name=lan-br0
+Kind=bridge
+
+[Network]
+# Only parent bridge will have IP Address. Child interfaces will not.
+# Only WAN port will configure DNS for this system.
+Address=192.168.150.1/24
+
+# Ensure this interface is configured as admin up on boot,
+# even when child interfaces do not have carrier/are not admin up.
+# https://www.freedesktop.org/software/systemd/man/latest/systemd.network.html#ConfigureWithoutCarrier=
+ConfigureWithoutCarrier=true
+
+[DHCPv4]
+# Ensure only WAN interface configures default route
+# https://www.freedesktop.org/software/systemd/man/latest/systemd.network.html#UseRoutes=
+UseRoutes=false
+
+[Link]
+# Force this interface as admin up, even when loses carrier.
+# https://www.freedesktop.org/software/systemd/man/latest/systemd.network.html#ActivationPolicy=
+ActivationPolicy=always-up

@@ -1,0 +1,342 @@
+---
+- name: Configure Home Router
+  hosts: all
+
+  # Will also try to become root on localhost, so tasks
+  # which use 'delegate_to: localhost' also need 'become: false'
+  # to avoid prompting for password on localhost.
+  # This is especially important when running w/in Vagrant,
+  # as it will just fail without prompting for password.
+  become: true
+
+  tasks:
+    ### Validate variables and configuration ###
+    - name: Verify mandatory variables
+      assert:
+        that:
+          - cfg_dir is defined
+          - cfg_dir | length > 0
+          - cfg_dir != None
+        fail_msg: >
+          Required config directory not specified. For example:
+          ansible-playbook ansible/playbook.yml --extra-vars cfg_dir=configs
+
+    - name: "Check '{{ cfg_dir }}' directory exists"
+      delegate_to: localhost
+      become: false
+      stat:
+        path: "{{ cfg_dir }}"
+      register: _cfg_dir
+      failed_when: not _cfg_dir.stat.exists
+
+    - name: "Check '{{ cfg_dir }}/systemd-networkd/' directory exists"
+      delegate_to: localhost
+      become: false
+      stat:
+        path: "{{ cfg_dir }}/systemd-networkd/"
+      register: systemd_networkd_dir
+      failed_when: not systemd_networkd_dir.stat.exists
+
+    - name: "Check '{{ cfg_dir }}/hostapd/' directory exists"
+      delegate_to: localhost
+      become: false
+      stat:
+        path: "{{ cfg_dir }}/hostapd/"
+      register: hostapd_local_dir
+      failed_when: hostapd_local_dir.stat.exists and not hostapd_local_dir.stat.isdir
+
+    ## Update and install packages ###
+
+    # If using NFS mount for DNF cache, updating DNF will
+    # fail because of NFS permissions issues (hand waving a bit here).
+    # This is the closest I could find to the specific issue:
+    # https://bugzilla.redhat.com/show_bug.cgi?id=2018678
+    - name: Update packages (RedHat)
+      shell: |
+        sudo dnf update -y --exclude=dnf
+        sudo dnf upgrade -y --exclude=dnf
+      when: ansible_os_family == "RedHat"
+    
+    - name: Update packages (Debian)
+      package:
+        name: "*"
+        state: latest
+      when: ansible_os_family == "Debian"
+
+    - name: Install required packages (RedHat)
+      package:
+        name:
+          # Expect systemd-networkd and systemd-resolved
+          # to already be installed
+          - systemd-networkd
+          - systemd-resolved
+          - nftables
+          - dhcp-server
+          - hostapd
+          - iw
+      when: ansible_os_family == "RedHat"
+
+    - name: Install required packages (Debian)
+      package:
+        name:
+          # Expect systemd-networkd and systemd-resolved
+          # to already be installed
+          - systemd-networkd
+          - systemd-resolved
+          - nftables
+          - isc-dhcp-server
+          - hostapd
+          - iw
+      when: ansible_os_family == "Debian"
+
+    - name: Install convenience packages
+      package:
+        name:
+          - tmux
+          - tree
+          - vim
+          - wget
+
+    - name: Uninstall conflicting packages
+      package:
+        state: absent
+        name:
+          - NetworkManager
+          - firewalld
+          - cockpit
+          - ufw
+
+    ### Disable undesired services and configuration ###
+    # TODO: See if this will work w/o modification on Ubuntu
+    - name: Install python3-libselinux (RedHat)
+      package:
+        name: python3-libselinux
+      when: ansible_os_family == "RedHat"
+
+    - name: Disable SELinux (RedHat)
+      ansible.posix.selinux:
+        state: disabled
+      when: ansible_os_family == "RedHat"
+
+    - name: Disable and mask DHCPv6 server (RedHat)
+      service:
+        name: dhcpd6
+        state: stopped
+        enabled: no
+        masked: yes
+      when: ansible_os_family == "RedHat"
+
+    - name: Disable and mask DHCPv6 server (Debian)
+      service:
+        name: isc-dhcp-server6
+        state: stopped
+        enabled: no
+        masked: yes
+      when: ansible_os_family == "Debian"
+
+    ### Gather and copy configuration files to system ###
+    - name: Gather existing udev rules
+      find:
+        paths: /etc/udev/rules.d/
+      register: old_udev_rules
+      when: hostapd_local_dir.stat.exists
+
+    - name: Remove existing udev rules
+      file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ old_udev_rules.files }}"
+      when: hostapd_local_dir.stat.exists
+
+    - name: Gather udev rules
+      delegate_to: localhost
+      become: false
+      find:
+        paths: "misc_cfg/"
+        patterns: "*.rules"
+      register: udev_rules
+      failed_when: udev_rules.matched == 0
+      when: hostapd_local_dir.stat.exists
+
+    - name: Install udev rules
+      copy:
+        src: "{{ item.path }}"
+        dest: /etc/udev/rules.d/
+        owner: root
+        mode: 0600
+      with_items: "{{ udev_rules.files }}"
+      when: hostapd_local_dir.stat.exists
+
+    - name: Gather existing systemd-networkd configs
+      find:
+        paths: /etc/systemd/network/
+      register: old_systemd_network_cfgs
+
+    - name: Remove existing systemd-networkd configs
+      file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ old_systemd_network_cfgs.files }}"
+
+    - name: Gather systemd-networkd configs
+      delegate_to: localhost
+      become: false
+      find:
+        paths: "{{ cfg_dir }}/systemd-networkd/"
+        patterns:
+          - "*.link"
+          - "*.netdev"
+          - "*.network"
+        recurse: yes
+      register: systemd_networkd_cfgs
+      failed_when: systemd_networkd_cfgs.matched == 0
+
+    - name: Install systemd-networkd configs
+      copy:
+        src: "{{ item.path }}"
+        dest: /etc/systemd/network/
+        owner: systemd-network # Not root!
+        mode: 0600
+      with_items: "{{ systemd_networkd_cfgs.files }}"
+
+    - name: Install DHCPv4 server config
+      copy:
+        src: "{{ cfg_dir }}/dhcpd.conf"
+        dest: /etc/dhcp/dhcpd.conf
+        owner: root
+        mode: 0600
+
+    - name: Install nftables config (RedHat)
+      copy:
+        src: "{{ cfg_dir }}/nftables.conf"
+        dest: /etc/sysconfig/nftables.conf
+        owner: root
+        mode: 0600
+      when: ansible_os_family == "RedHat"
+
+    - name: Install nftables config (Debian)
+      copy:
+        src: "{{ cfg_dir }}/nftables.conf"
+        dest: /etc/nftables.conf
+        owner: root
+        mode: 0600
+      when: ansible_os_family == "Debian"
+
+    - name: Gather existing hostapd configs
+      find:
+        paths: /etc/hostapd/
+      register: old_hostapd_cfgs
+      when: hostapd_local_dir.stat.exists
+
+    - name: Remove existing hostapd configs
+      file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ old_hostapd_cfgs.files }}"
+      when: hostapd_local_dir.stat.exists
+
+    - name: Gather hostapd configs
+      delegate_to: localhost
+      become: false
+      find:
+        paths: "{{ cfg_dir }}/hostapd/"
+        patterns: "*.conf"
+      register: hostapd_cfgs
+      failed_when: hostapd_cfgs.matched == 0
+      when: hostapd_local_dir.stat.exists
+
+    - name: Install hostapd configs
+      copy:
+        src: "{{ item.path }}"
+        dest: /etc/hostapd/
+        owner: root
+        mode: 0600
+      with_items: "{{ hostapd_cfgs.files }}"
+      when: hostapd_local_dir.stat.exists
+
+    ### Enable desired services and configuration ###
+    - name: Enable IPv4 forwarding
+      ansible.posix.sysctl:
+        name: net.ipv4.ip_forward
+        value: "1"
+        sysctl_set: true
+
+    - name: Enable and unmask systemd-networkd
+      service:
+        name: systemd-networkd
+        state: started
+        enabled: yes
+        masked: no
+
+    - name: Enable and unmask systemd-resolved
+      service:
+        name: systemd-resolved
+        state: started
+        enabled: yes
+        masked: no
+
+    - name: Install systemd-resolved 'resolv.conf'
+      shell: |
+        rm -f /etc/resolv.conf
+        ln -s /run/systemd/resolve/resolv.conf /etc/resolv.conf
+
+    - name: Enable and unmask nftables
+      service:
+        name: nftables
+        state: stopped # This will start on next boot
+        enabled: yes
+        masked: no
+
+    - name: Enable and unmask DHCPv4 server (RedHat)
+      service:
+        name: dhcpd
+        state: stopped # This will start on next boot
+        enabled: yes
+        masked: no
+      when: ansible_os_family == "RedHat"
+
+    - name: Enable and unmask DHCPv4 server (Debian)
+      service:
+        name: isc-dhcp-server
+        state: stopped # This will start on next boot
+        enabled: yes
+        masked: no
+      when: ansible_os_family == "Debian"
+
+    # Debian does this for us, so no need on Ubuntu
+    - name: Install flexible hostapd service file (RedHat)
+      copy:
+        src: "misc_cfg/hostapd@.service"
+        dest: /usr/lib/systemd/system/hostapd@.service
+        owner: root
+        mode: 0600
+      when: ansible_os_family == "RedHat"
+
+    - name: Gather WLAN interface names from hostapd config files
+      delegate_to: localhost
+      become: false
+      # Use 'rev', 'cut', then 'rev' to support configuration files w/
+      # multiple "." characters in the name. See: https://stackoverflow.com/a/32584935
+      # TODO: set -o pipefail
+      shell: |
+        ls "{{ cfg_dir }}/hostapd/" | grep -e ".conf$" | rev | cut -f 2- -d "." | rev
+      register: wlan_interfaces
+
+    - name: Enable and unmask hostapd
+      service:
+        name: "hostapd@{{ item }}"
+        state: stopped # This will start on next boot
+        enabled: yes
+        masked: no
+      with_items: "{{ wlan_interfaces.stdout_lines }}"
+
+    ## Debugging ##
+    # TODO: Add tag
+    #mkdir -p /etc/systemd/system/systemd-networkd.service.d/
+    #/etc/systemd/system/systemd-networkd.service.d/10-debug.conf
+    #[Service]
+    #Environment=SYSTEMD_LOG_LEVEL=debug
+    # Need to daemon-reload and restart service for change to take effect
+    # Daemon reload to be polite
+
+    # TODO: Verify services started/running and SELinux disabled
