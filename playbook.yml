@@ -134,6 +134,14 @@
         masked: yes
       when: ansible_os_family == "Debian"
 
+    # This will potentially avoid confusion later
+    - name: Disable and mask hostapd (to allow for per-interface hostapd services)
+      service:
+        name: hostapd
+        state: stopped
+        enabled: no
+        masked: yes
+
     ### Gather and copy configuration files to system ###
     - name: Gather existing udev rules
       find:
@@ -322,7 +330,7 @@
         ls "{{ cfg_dir }}/hostapd/" | grep -e ".conf$" | rev | cut -f 2- -d "." | rev
       register: wlan_interfaces
 
-    - name: Enable and unmask hostapd
+    - name: Enable and unmask per-interface hostapd services
       service:
         name: "hostapd@{{ item }}"
         state: stopped # This will start on next boot
