@@ -1,9 +1,8 @@
 # Linux Home Router Configuration
 
 **TODO:**
-   - Investigate setting `dhcpd` to use `network-pre.target` instead of `network-online.target` to still set up on `network-online.target` failure.
-   - Investigate how to set wan interface to succeed at setting up when not getting WAN DHCP (e.g. misbehaving modem) but still reattempt DHCP after initial cfg, which would fix the `dhcpd` issue potentially. https://www.freedesktop.org/wiki/Software/systemd/NetworkTarget/
-   - Configure hostapd confs w/ basic security
+   - Investigate why `systemd-networkd-wait-online.service` fails, even though `systemd-networkd.service` runs just fine
+   - Verify Ubuntu support (only Fedora tested really at this point)
 
 Ansible-based Linux home router configuration, using all open source tooling under the hood (primarily `systemd-networkd`, `nftables`, `dhcpd`, and `hostapd`).
 
