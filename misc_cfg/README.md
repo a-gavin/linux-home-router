@@ -14,4 +14,7 @@ This directory contains miscellaneous configuration files required for specific 
     sudo systemctl enable hostapd@wlan0.service
     sudo systemctl enable hostapd@wlan1.service
     ```
+
+    The `Before=network.target` and `Wants=network.target` in the `[Unit]` section are also replaced with  `Wants=systemd-networkd-wait-online.network` and `After=systemd-networkd-wait-online.service`. This ensures that `systemd-networkd` renames network interfaces before `hostapd` attempts to use the renamed interfaces.
     
+    With the default settings, `hostapd` starts when the network management stack initializes but before `systemd-networkd` renames the interfaces. This causes each `hostapd` service to fail on boot before succeeding on a subsequent attempt (since `Restart=on-failure` is set). The issue is mostly cosmetic but will pollute the logs and potentially cause confusion. See [this `systemd` wiki page](https://systemd.io/NETWORK_ONLINE/) for more details.
