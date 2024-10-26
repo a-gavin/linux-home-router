@@ -63,28 +63,36 @@
         state: latest
       when: ansible_os_family == "Debian"
 
+    # There may be more, but these are the main culprits
+    - name: Uninstall conflicting packages
+      package:
+        state: absent
+        name:
+          - NetworkManager
+          - firewalld
+          - ufw
+          - cockpit
+
+    # Expect systemd-networkd and systemd-resolved
+    # to already be installed
     - name: Install required packages (RedHat)
       package:
         name:
-          # Expect systemd-networkd and systemd-resolved
-          # to already be installed
           - systemd-networkd
           - systemd-resolved
           - nftables
-          - dhcp-server
           - hostapd
           - iw
       when: ansible_os_family == "RedHat"
 
+    # Expect systemd-networkd and systemd-resolved
+    # to already be installed
     - name: Install required packages (Debian)
       package:
         name:
-          # Expect systemd-networkd and systemd-resolved
-          # to already be installed
           - systemd-networkd
           - systemd-resolved
           - nftables
-          - isc-dhcp-server
           - hostapd
           - iw
       when: ansible_os_family == "Debian"
@@ -97,15 +105,6 @@
           - vim
           - wget
 
-    - name: Uninstall conflicting packages
-      package:
-        state: absent
-        name:
-          - NetworkManager
-          - firewalld
-          - cockpit
-          - ufw
-
     ### Disable undesired services and configuration ###
     # TODO: See if this will work w/o modification on Ubuntu
     - name: Install python3-libselinux (RedHat)
@@ -117,6 +116,22 @@
       ansible.posix.selinux:
         state: disabled
       when: ansible_os_family == "RedHat"
+
+    - name: Disable and mask DHCPv4 server (RedHat)
+      service:
+        name: dhcpd
+        state: stopped
+        enabled: no
+        masked: yes
+      when: ansible_os_family == "RedHat"
+
+    - name: Disable and mask DHCPv4 server (Debian)
+      service:
+        name: isc-dhcp-server
+        state: stopped
+        enabled: no
+        masked: yes
+      when: ansible_os_family == "Debian"
 
     - name: Disable and mask DHCPv6 server (RedHat)
       service:
@@ -207,13 +222,6 @@
         mode: 0600
       with_items: "{{ systemd_networkd_cfgs.files }}"
 
-    - name: Install DHCPv4 server config
-      copy:
-        src: "{{ cfg_dir }}/dhcpd.conf"
-        dest: /etc/dhcp/dhcpd.conf
-        owner: root
-        mode: 0600
-
     - name: Install nftables config (RedHat)
       copy:
         src: "{{ cfg_dir }}/nftables.conf"
@@ -295,22 +303,6 @@
         enabled: yes
         masked: no
 
-    - name: Enable and unmask DHCPv4 server (RedHat)
-      service:
-        name: dhcpd
-        state: stopped # This will start on next boot
-        enabled: yes
-        masked: no
-      when: ansible_os_family == "RedHat"
-
-    - name: Enable and unmask DHCPv4 server (Debian)
-      service:
-        name: isc-dhcp-server
-        state: stopped # This will start on next boot
-        enabled: yes
-        masked: no
-      when: ansible_os_family == "Debian"
-
     # Debian does this for us, so no need on Ubuntu
     - name: Install flexible hostapd service file (RedHat)
       copy:
@@ -330,6 +322,13 @@
         ls "{{ cfg_dir }}/hostapd/" | grep -e ".conf$" | rev | cut -f 2- -d "." | rev
       register: wlan_interfaces
 
+    # Since hostapd service file requires interface-specific config
+    # file in '/etc/hostapd/' to start and this playbook removes
+    # any old config files, shouldn't have stale interfaces
+    # trying to start hostapd.
+    #
+    # It is possible for stale configs leftover in the local
+    # hostapd config directory will start unexpected hostapd services.
     - name: Enable and unmask per-interface hostapd services
       service:
         name: "hostapd@{{ item }}"

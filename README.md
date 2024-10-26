@@ -1,24 +1,20 @@
 # Linux Home Router Configuration
 
-**TODO:**
-   - Investigate why `systemd-networkd-wait-online.service` fails, even though `systemd-networkd.service` runs just fine
-   - Verify Ubuntu support (only Fedora tested really at this point)
+Ansible-based Linux home router configuration, using all open source tooling under the hood (primarily `systemd-networkd`, `nftables`, and `hostapd`).
 
-Ansible-based Linux home router configuration, using all open source tooling under the hood (primarily `systemd-networkd`, `nftables`, `dhcpd`, and `hostapd`).
-
-Once you have verified your configuration matches the tool's [assumptions](#assumptions) and followed the initial setup outline in [instructions](#instructions), configuring the system is as simple as running the following (see [this section](#configure-target-machine) for more info):
+Once you have verified your configuration matches the tool's [configuration assumptions](#configuration-assumptions) and followed the initial setup outlined in [instructions](#instructions), configuring the system is as simple as running the following (see [this section](#configure-target-machine) for more info):
 
 ```Bash
 ansible-playbook playbook.yml -i MACHINE, --extra-vars cfg_dir=example_cfgs --ask-become-pass
 ```
 
-## Assumptions
+## Configuration Assumptions
 
 In addition to assuming [some Linux networking familiarity](https://a-gavin.github.io/blog/linux-cmds/#querying-network-information), this tool assumes a Fedora target system and a configuration file directory with the following:
 
-- `dhcpd` configuration file called `dhcpd.conf`
 - `nftables` configuration file called `nftables.conf`
 - `systemd-networkd` configuration files with suffix `.network` in sub-directory called `systemd-networkd/`
+  - Assume one `.network` file (likely a LAN bridge) configures the LAN DHCP server
   - If exist, configuration files with suffix `.link` and `.netdev` will be installed as well
 - OPTIONAL: `hostapd` configuration file(s) in sub-directory called `hostapd/`
   - `hostapd` configuration files should be of the format `interface.conf`, where `interface` is the name of the wireless interface to be used as an access point (e.g. `wlan0`)
@@ -27,9 +23,9 @@ In addition to assuming [some Linux networking familiarity](https://a-gavin.gith
 
 **WARNING:** It is strongly suggested to have non-networked access to the target router system (e.g. monitor and keyboard or serial). It's possible (even likely) you will lose network access to the machine in the process.
 
-Ansible steps should be performed on the machine which you intend to run Ansible on (not necessarily the target router machine, although that's possible too).
+Ansible install steps should be performed on the machine which you intend to run Ansible on (not necessarily the target router machine, although that's possible too).
 
-In my setup, I have have Ansible installed on my workstation where store my configuration and this repository. The target router machine has its WAN port on the same network, so I can access it. I use a separate, third machine to validate the target router machine's LAN. Depending on your `nftables` rules, you may have to stop `nftables` on the target router machine when re-provisioning the system (Ansible uses SSH and you will likely not want SSH enabled on your WAN interface).
+In my setup, I have have Ansible installed on my workstation where I store my configuration and this repository. The target router machine has its wired WAN port on the same network, so I can access it (connecting to the system using any active WiFi AP interfaces will fail during the Ansible playbook run). I use a separate, third machine to validate the target router machine's LAN to WAN connectivity. Depending on your `nftables` rules, you may have to stop `nftables` on the target router machine when re-provisioning the system (Ansible uses SSH and you will hopefully disable SSH on your WAN interface).
 
 ### Install Ansible
 
@@ -70,7 +66,7 @@ In my setup, I have have Ansible installed on my workstation where store my conf
    ansible-galaxy collection install ansible.posix
    ```
 
-### Configure `dhcpd`, `nftables`, and `systemd-networkd`
+### Configure `nftables` and `systemd-networkd`
 
 **NOTE:** Configuring these tools was the most time consuming portion for me. Aside from simple things like ensuring things match, you may also run into headaches like `systemd-networkd` case sensitivity and confusion with the different types of `systemd-networkd` configuration files and sections.
 
@@ -80,9 +76,6 @@ The WAN interface is hardcoded to `wan0`. The bridged LAN interface bridges a LA
 
 I found the following documentation to be useful:
 
-- `dhcpd`:
-  - [`man dhcpd`](https://linux.die.net/man/8/dhcpd)
-  - [`man dhcpd.conf`](https://linux.die.net/man/5/dhcpd.conf)
 - `nftables`:
   - [`nftables` Home Router Example](https://wiki.nftables.org/wiki-nftables/index.php/Simple_ruleset_for_a_home_router)
       - The example `nftables` ruleset is largely based on this
@@ -99,7 +92,9 @@ I found the following documentation to be useful:
 Use the `ansible-playbook` command to configure the machine `MACHINE`, installing configuration available in the `example_cfgs/` directory.
 
 ```Bash
-# Config directory is `./example_cfgs/`
+# Config directory is './example_cfgs/', but you can change this
+# to whatever you want so long as you update the 'cfg_dir=' portion
+# of the command
 ansible-playbook playbook.yml -i MACHINE, --extra-vars cfg_dir=example_cfgs --ask-become-pass
 ```
 

@@ -1,5 +1,5 @@
 [Match]
-Name=lan-br0
+Name=lan-bridge0
 Kind=bridge
 
 [Network]
@@ -7,10 +7,21 @@ Kind=bridge
 # Only WAN port will configure DNS for this system.
 Address=192.168.150.1/24
 
+# Serve DHCP from this interface
+# https://www.freedesktop.org/software/systemd/man/latest/systemd.network.html#DHCPServer=
+DHCPServer=yes
+
 # Ensure this interface is configured as admin up on boot,
 # even when child interfaces do not have carrier/are not admin up.
 # https://www.freedesktop.org/software/systemd/man/latest/systemd.network.html#ConfigureWithoutCarrier=
 ConfigureWithoutCarrier=true
+
+[DHCPServer]
+# Requires 'DHCPServer=yes' in the '[Network]' section
+BindToInterface=yes
+PoolOffset=100
+EmitDNS=yes
+DNS=1.1.1.1
 
 [DHCPv4]
 # Ensure only WAN interface configures default route

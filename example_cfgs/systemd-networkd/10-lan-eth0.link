@@ -1,0 +1,5 @@
+[Match]
+PermanentMACAddress=XX:XX:XX:XX:XX:XX
+
+[Link]
+Name=lan-eth0

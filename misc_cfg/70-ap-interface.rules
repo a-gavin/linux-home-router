@@ -1,6 +1,0 @@
-# Changes all newly-created interfaces named 'wlXXXX' (i.e. 'wlanX' and 'wlpYsZ')
-# from 'managed' (default) to 'AP'.
-#
-# Command 'iw' will complain and point to 'hostapd' if you use just 'ap'
-#
-SUBSYSTEM=="net", KERNEL=="wl*", ACTION=="add", RUN+="/usr/sbin/iw %k set type __ap"

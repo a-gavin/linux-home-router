@@ -2,4 +2,4 @@
 PermanentMACAddress=XX:XX:XX:XX:XX:XX
 
 [Link]
-Name=lan0
+Name=lan-wifi0

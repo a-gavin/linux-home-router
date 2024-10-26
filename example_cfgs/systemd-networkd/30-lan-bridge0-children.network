@@ -1,9 +1,9 @@
 [Match]
 # Can also use globs here, see:
 # https://www.freedesktop.org/software/systemd/man/latest/systemd.network.html#Name=
-Name=lan0 wlan0
+Name=lan-eth0 lan-wifi0
 
 [Network]
 # Parent bridge interface is gateway for LAN,
 # so child interfaces will not have any IP/DNS configuration.
-Bridge=lan-br0
+Bridge=lan-bridge0
