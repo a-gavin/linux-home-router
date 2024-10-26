@@ -1,0 +1,14 @@
+# Changes all newly-created interfaces named 'lan-wifiX'  from 'managed' (default) to 'AP'.
+#
+# Ensure this step runs AFTER 'systemd-udev' renames the interfaces by naming
+# this udev file '99-ap-interface.rules' (renaming happens in '80-net-setup-link.rules).
+# Note that new names 'systemd-udev' will apply come from 'systemd-networkd' .link files
+# (assuming 'systemd-networkd' is enabled).
+#
+# TODO: Investigate issue where this step fails using the kernel name (e.g. '/usr/sbin/iw %k set type __ap')
+#       'systemd-udev' properly renames the interface before this step runs. However, it seems the kernel
+#       name remains the old name when this rule is applied later in the process.
+#
+# Command 'iw' will complain and point to 'hostapd' if you use just 'ap'
+#
+SUBSYSTEM=="net", ENV{DEVTYPE}=="wlan", ENV{ID_NET_NAME}=="lan-wifi*", ACTION=="add", RUN+="/usr/sbin/iw $env{ID_NET_NAME} set type __ap"

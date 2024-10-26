@@ -1,5 +1,5 @@
 [Match]
-Name=wan0
+Name=wan-eth0
 Type=ether
 
 [Link]
